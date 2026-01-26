@@ -118,6 +118,12 @@ def process_mailbox() -> bool:
         logging.error("Mail search failed")
         mail.logout()
         return False
+    
+    # Check for messages in label
+    if not messages[0].split():
+        logging.info("No messages found matching criteria.")
+        mail.logout()
+        return False
 
     # Newest first
     msg_ids = messages[0].split()[::-1]

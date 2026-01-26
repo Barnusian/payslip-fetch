@@ -9,6 +9,8 @@ services:
     # The following .env reference for if mounted locally rather than from repo:
     # env_file:
     #  - .env
+    environment:
+      - TZ: Europe/London
     volumes:
       - /appdata/paperless-ngx/consume:/consume
       - /appdata/paperless-ngx/testconsume:/testconsume
