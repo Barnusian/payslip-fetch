@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  payslip-fetch:
+    build: .
+    container_name: payslip-fetch
+    # This ensures the script runs as the same user as Paperless
+    user: "1000:1000"
+    # The following .env reference for if mounted locally rather than from repo:
+    # env_file:
+    #  - .env
+    volumes:
+      - /appdata/paperless-ngx/consume:/consume
+      - /appdata/paperless-ngx/testconsume:/testconsume
+    restart: unless-stopped
+    # tmpfs allows the script to write to /tmp in RAM, 
+    # even if the container user isn't root.
+    tmpfs:
+      - /tmp:size=50M,mode=1777
