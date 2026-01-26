@@ -11,6 +11,12 @@ services:
     #  - .env
     environment:
       - TZ=Europe/London
+      - GMAIL_USER
+      - GMAIL_APP_PASSWORD
+      - SENDER_EMAIL
+      - GMAIL_LABEL
+      - GMAIL_PROCESSED_LABEL
+      - PDF_PASSWORD
     volumes:
       - /appdata/paperless-ngx/consume:/consume
       - /appdata/paperless-ngx/testconsume:/testconsume
