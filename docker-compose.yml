@@ -10,7 +10,7 @@ services:
     # env_file:
     #  - .env
     environment:
-      - TZ: Europe/London
+      - TZ=Europe/London
     volumes:
       - /appdata/paperless-ngx/consume:/consume
       - /appdata/paperless-ngx/testconsume:/testconsume
