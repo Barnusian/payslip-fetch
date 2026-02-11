@@ -121,13 +121,17 @@ def process_mailbox() -> bool:
         mail.logout()
         return False
 
-    msg_ids = messages[0].split()
+    # Get IDs and reverse them so we process newest first
+    msg_ids = messages[0].split()[::-1]
     processed_any = False
 
     for msg_id in msg_ids:
-        # Check Gmail labels for this specific message to see if it's already processed
+        # Check Gmail labels to see if it's already processed
         _, label_data = mail.fetch(msg_id, "(X-GM-LABELS)")
-        if GMAIL_PROCESSED_LABEL.encode() in label_data[0][1]:
+        
+        # We check the entire byte response for the processed label
+        label_bytes = b"".join(d for d in label_data if isinstance(d, bytes))
+        if GMAIL_PROCESSED_LABEL.encode() in label_bytes:
             continue
 
         logging.info(f"Processing message ID: {msg_id.decode()}")
@@ -147,15 +151,17 @@ def process_mailbox() -> bool:
 
             try:
                 decrypt_pdf(encrypted, decrypted)
-                encrypted.unlink()
+                if encrypted.exists():
+                    encrypted.unlink()
+                
                 logging.info(f"Successfully decrypted and moved: {filename}")
                 file_processed_in_msg = True
                 processed_any = True
             except Exception as e:
                 logging.error(f"Failed to process {filename}: {e}")
 
-        # If we successfully moved the PDF, label the email in Gmail
         if file_processed_in_msg:
+            # Add the processed label so we don't do this again
             mail.store(msg_id, "+X-GM-LABELS", f'"{GMAIL_PROCESSED_LABEL}"')
 
     mail.logout()
@@ -175,11 +181,11 @@ if __name__ == "__main__":
             try:
                 success = process_mailbox()
                 if success:
-                    logging.info("Batch processing complete. Sleeping until next weekly window.")
+                    logging.info("Batch complete. Sleeping until next Tuesday window.")
                     sleep_until(next_tuesday_at_10(datetime.now()))
                     continue
             except Exception as e:
-                logging.error(f"Unexpected error in main loop: {e}")
+                logging.error(f"Unexpected error in process_mailbox: {e}")
 
-        # If we reach here, either we aren't in the window or nothing was found to process
+        # If not in window, or if check found nothing, follow normal sleep schedule
         sleep_until(next_valid_wakeup(datetime.now()))
