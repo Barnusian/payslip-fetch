@@ -100,38 +100,41 @@ def decrypt_pdf(input_pdf: Path, output_pdf: Path):
 
 def process_mailbox() -> bool:
     """
+    Processes ALL unprocessed payslips found in the label.
     Returns True if at least one payslip was successfully processed.
     """
 
     mail = imaplib.IMAP4_SSL(IMAP_SERVER)
     mail.login(GMAIL_USER, GMAIL_PASSWORD)
-
-    # Only search inside the Payslips label
     mail.select(f'"{GMAIL_LABEL}"')
 
-    status, messages = mail.search(
-        None,
-        f'(FROM "{SENDER_EMAIL}")'
-    )
+    # Search for candidate messages from sender
+    status, messages = mail.search(None, f'(FROM "{SENDER_EMAIL}")')
 
     if status != "OK":
         logging.error("Mail search failed")
         mail.logout()
         return False
     
-    # Check for messages in label
     if not messages[0].split():
-        logging.info("No messages found matching criteria.")
+        logging.info("No messages found in label.")
         mail.logout()
         return False
 
-    # Newest first
-    msg_ids = messages[0].split()[::-1]
+    msg_ids = messages[0].split()
+    processed_any = False
 
     for msg_id in msg_ids:
+        # Check Gmail labels for this specific message to see if it's already processed
+        _, label_data = mail.fetch(msg_id, "(X-GM-LABELS)")
+        if GMAIL_PROCESSED_LABEL.encode() in label_data[0][1]:
+            continue
+
+        logging.info(f"Processing message ID: {msg_id.decode()}")
         _, data = mail.fetch(msg_id, "(RFC822)")
         msg = email.message_from_bytes(data[0][1], policy=default)
 
+        file_processed_in_msg = False
         for part in msg.iter_attachments():
             filename = part.get_filename()
             if not filename or not filename.lower().endswith(".pdf"):
@@ -145,36 +148,38 @@ def process_mailbox() -> bool:
             try:
                 decrypt_pdf(encrypted, decrypted)
                 encrypted.unlink()
-
-                # Apply "Processed" label
-                mail.store(msg_id, "+X-GM-LABELS", f'"{GMAIL_PROCESSED_LABEL}"')
-
-                logging.info(f"Imported and processed {filename}")
-                mail.logout()
-                return True
-
+                logging.info(f"Successfully decrypted and moved: {filename}")
+                file_processed_in_msg = True
+                processed_any = True
             except Exception as e:
                 logging.error(f"Failed to process {filename}: {e}")
 
+        # If we successfully moved the PDF, label the email in Gmail
+        if file_processed_in_msg:
+            mail.store(msg_id, "+X-GM-LABELS", f'"{GMAIL_PROCESSED_LABEL}"')
+
     mail.logout()
-    return False
+    return processed_any
 
 
 # ----------------------------
 # Main loop
 # ----------------------------
 
-while True:
-    now = datetime.now()
+if __name__ == "__main__":
+    while True:
+        now = datetime.now()
 
-    if now.weekday() in VALID_WEEKDAYS and WINDOW_START <= now.time() <= WINDOW_END:
-        logging.info("Within processing window, checking mailbox")
-        success = process_mailbox()
+        if now.weekday() in VALID_WEEKDAYS and WINDOW_START <= now.time() <= WINDOW_END:
+            logging.info("Within processing window, checking mailbox...")
+            try:
+                success = process_mailbox()
+                if success:
+                    logging.info("Batch processing complete. Sleeping until next weekly window.")
+                    sleep_until(next_tuesday_at_10(datetime.now()))
+                    continue
+            except Exception as e:
+                logging.error(f"Unexpected error in main loop: {e}")
 
-        if success:
-            # Go dormant until next week
-            sleep_until(next_tuesday_at_10(datetime.now()))
-            continue
-
-    # Nothing to do right now
-    sleep_until(next_valid_wakeup(datetime.now()))
+        # If we reach here, either we aren't in the window or nothing was found to process
+        sleep_until(next_valid_wakeup(datetime.now()))
